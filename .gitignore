@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+Brick 2.xcodeproj/
+Brick 3.xcodeproj/
+Brick 4.xcodeproj/
+design-qa 2.md
+design-qa 3.md
