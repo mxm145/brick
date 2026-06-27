@@ -7,15 +7,34 @@ enum HorizontalMove {
 
 @MainActor
 final class GameController: ObservableObject {
-    @Published private(set) var game = TetrisGame()
+    @Published private(set) var game: TetrisGame
+    @Published private(set) var leaderboard: [ScoreEntry]
     @Published var timerToken = UUID()
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .light)
     private var continuousMoveTask: Task<Void, Never>?
+    private var didRestore = false
+    private var lastSavedAt = Date.distantPast
+
+    init() {
+        game = GamePersistence.loadGame() ?? TetrisGame()
+        leaderboard = GamePersistence.loadLeaderboard()
+    }
+
+    func restoreOrStart() {
+        guard !didRestore else { return }
+        didRestore = true
+        if game.state == .ready {
+            start()
+        } else {
+            timerToken = UUID()
+        }
+    }
 
     func start() {
         stopContinuousMove()
         game.start()
         timerToken = UUID()
+        save(force: true)
     }
 
     func restart() {
@@ -25,23 +44,50 @@ final class GameController: ObservableObject {
 
     func moveLeft() { move(.left, withFeedback: true) }
     func moveRight() { move(.right, withFeedback: true) }
-    func rotate() { game.rotate(); feedback() }
-    func hardDrop() { game.hardDrop(); feedback() }
+
+    func rotate() {
+        let previousState = game.state
+        game.rotate()
+        saveAfterGameUpdate(from: previousState)
+        feedback()
+    }
+
+    func hardDrop() {
+        let previousState = game.state
+        game.hardDrop()
+        saveAfterGameUpdate(from: previousState, force: true)
+        feedback()
+    }
+
+    func queueLongBar() {
+        game.queueLongBar()
+        save()
+        feedback()
+    }
 
     func togglePause() {
         stopContinuousMove()
+        let previousState = game.state
         game.togglePause()
+        saveAfterGameUpdate(from: previousState, force: true)
         feedback()
     }
 
     func setSpeed(_ speed: DropSpeed) {
+        let previousState = game.state
         game.setSpeed(speed)
         timerToken = UUID()
+        saveAfterGameUpdate(from: previousState, force: true)
         feedback()
     }
 
-    func advance(by elapsed: TimeInterval) { game.advance(by: elapsed) }
-    func queueLongBar() { game.queueLongBar(); feedback() }
+    func advance(by elapsed: TimeInterval) {
+        let previousState = game.state
+        game.advance(by: elapsed)
+        saveAfterGameUpdate(from: previousState)
+    }
+
+    func saveNow() { save(force: true) }
 
     func startContinuousMove(_ direction: HorizontalMove) {
         stopContinuousMove()
@@ -61,11 +107,28 @@ final class GameController: ObservableObject {
     }
 
     private func move(_ direction: HorizontalMove, withFeedback: Bool) {
+        let previousState = game.state
         switch direction {
         case .left: game.moveLeft()
         case .right: game.moveRight()
         }
+        saveAfterGameUpdate(from: previousState)
         if withFeedback { feedback() }
+    }
+
+    private func saveAfterGameUpdate(from previousState: GameState, force: Bool = false) {
+        if previousState != .over, game.state == .over {
+            leaderboard = GamePersistence.record(game)
+            save(force: true)
+        } else {
+            save(force: force)
+        }
+    }
+
+    private func save(force: Bool = false) {
+        guard force || Date().timeIntervalSince(lastSavedAt) >= 1 else { return }
+        GamePersistence.save(game)
+        lastSavedAt = .now
     }
 
     private func feedback() {
@@ -76,21 +139,29 @@ final class GameController: ObservableObject {
 
 struct ContentView: View {
     @StateObject private var controller = GameController()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isShowingLeaderboard = false
 
     var body: some View {
         GeometryReader { proxy in
-            let boardHeight = max(0, min(proxy.size.height - 222, (proxy.size.width - 32) * 2))
+            let boardHeight = max(0, min(
+                proxy.size.height - 124,
+                (proxy.size.width - 32) * CGFloat(TetrisGame.rows) / CGFloat(TetrisGame.columns)
+            ))
             let boardWidth = boardHeight * CGFloat(TetrisGame.columns) / CGFloat(TetrisGame.rows)
 
             VStack(spacing: 8) {
-                header
-                BoardView(board: controller.game.renderedBoard)
-                    .frame(width: boardWidth, height: boardHeight)
-                gameInfo
+                toolbar
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    BoardView(board: controller.game.renderedBoard)
+                        .frame(width: boardWidth, height: boardHeight)
+                    Spacer(minLength: 0)
+                }
                 controls
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -101,75 +172,89 @@ struct ContentView: View {
                 controller.advance(by: 0.02)
             }
         }
-        .onAppear { controller.start() }
-        .onDisappear { controller.stopContinuousMove() }
-    }
-
-    private var header: some View {
-        HStack {
-            metric("Score", value: controller.game.score.formatted())
-            Divider().frame(height: 44)
-            metric("Lines", value: controller.game.lines.formatted())
-            Spacer()
-            Button(action: controller.togglePause) {
-                Image(systemName: controller.game.state == .paused ? "play.fill" : "pause.fill")
-                    .font(.title3.weight(.semibold))
-            }
-            .accessibilityLabel(controller.game.state == .paused ? "Resume game" : "Pause game")
+        .onAppear { controller.restoreOrStart() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { controller.saveNow() }
+        }
+        .onDisappear {
+            controller.stopContinuousMove()
+            controller.saveNow()
+        }
+        .sheet(isPresented: $isShowingLeaderboard) {
+            LeaderboardView(entries: controller.leaderboard)
         }
     }
 
-    private func metric(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.monospacedDigit().weight(.semibold))
-        }
-    }
-
-    private var gameInfo: some View {
-        HStack(spacing: 12) {
-            VStack(spacing: 4) {
-                HStack(spacing: 4) {
-                    Text("Next").font(.caption).foregroundStyle(.secondary)
-                    Button("长条") { controller.queueLongBar() }
-                        .font(.caption2.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.accentColor)
-                        .accessibilityLabel("Set next piece to I bar")
+    private var toolbar: some View {
+        HStack(spacing: 3) {
+            compactMetric("Score", value: controller.game.score.formatted())
+            compactMetric("Lines", value: controller.game.lines.formatted())
+            Divider().frame(height: 28)
+            PiecePreview(kind: controller.game.next)
+                .frame(width: 28, height: 28)
+                .accessibilityLabel("Next piece")
+            longBarButton
+            Menu {
+                ForEach(DropSpeed.allCases) { speed in
+                    Button(speed.rawValue) { controller.setSpeed(speed) }
                 }
-                PiecePreview(kind: controller.game.next)
-                    .frame(width: 52, height: 52)
+            } label: {
+                Text(controller.game.speed.rawValue)
+                    .font(.caption2.weight(.semibold))
+                    .frame(width: 46, height: 30)
             }
-            .frame(width: 78)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Speed").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button(action: controller.restart) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Restart game")
-                }
-                HStack(spacing: 5) {
-                    ForEach(DropSpeed.allCases) { speed in
-                        Button(speed.rawValue) { controller.setSpeed(speed) }
-                            .font(.caption2.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .background(controller.game.speed == speed ? Color.accentColor : Color(uiColor: .secondarySystemBackground))
-                            .foregroundStyle(controller.game.speed == speed ? .white : .primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .accessibilityLabel("Drop speed")
+            Spacer(minLength: 0)
+            toolbarIconButton("list.number", label: "Leaderboard") { isShowingLeaderboard = true }
+            toolbarIconButton(
+                controller.game.state == .paused ? "play.fill" : "pause.fill",
+                label: controller.game.state == .paused ? "Resume game" : "Pause game",
+                action: controller.togglePause
+            )
+            toolbarIconButton("arrow.clockwise", label: "Restart game", action: controller.restart)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .frame(height: 42)
+        .frame(maxWidth: .infinity)
         .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func compactMetric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(value).font(.callout.monospacedDigit().weight(.semibold))
+        }
+        .frame(width: title == "Score" ? 68 : 28)
+    }
+
+    private var longBarButton: some View {
+        Button(action: controller.queueLongBar) {
+            VStack(spacing: 2) {
+                ForEach(0..<4) { _ in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.accentColor)
+                        .frame(width: 10, height: 5)
+                }
+            }
+            .frame(width: 44, height: 34)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Set next piece to I bar")
+    }
+
+    private func toolbarIconButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .frame(width: 30, height: 30)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .accessibilityLabel(label)
     }
 
     private var controls: some View {
@@ -181,6 +266,7 @@ struct ContentView: View {
                 startContinuousMove: { controller.startContinuousMove(.left) },
                 stopContinuousMove: controller.stopContinuousMove
             )
+            .frame(maxWidth: .infinity)
             HorizontalMoveButton(
                 icon: "arrow.right",
                 label: "Move right",
@@ -188,9 +274,13 @@ struct ContentView: View {
                 startContinuousMove: { controller.startContinuousMove(.right) },
                 stopContinuousMove: controller.stopContinuousMove
             )
+            .frame(maxWidth: .infinity)
             controlButton("arrow.clockwise", action: controller.rotate)
+                .frame(maxWidth: .infinity)
             controlButton("arrow.down", action: controller.hardDrop)
+                .frame(maxWidth: .infinity)
         }
+        .padding(.horizontal, 12)
     }
 
     private func controlButton(_ icon: String, action: @escaping () -> Void) -> some View {
@@ -199,8 +289,54 @@ struct ContentView: View {
                 .font(.title2.weight(.medium))
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
+                .foregroundStyle(Color.accentColor)
+                .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
+    }
+}
+
+private struct LeaderboardView: View {
+    let entries: [ScoreEntry]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                if entries.isEmpty {
+                    Text("还没有记录，开始一局吧。")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        HStack {
+                            Text("#\(index + 1)")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, alignment: .leading)
+                            Text(entry.score.formatted())
+                                .font(.title3.monospacedDigit().weight(.semibold))
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text("\(entry.lines) lines")
+                                Text(entry.date.formatted(date: .abbreviated, time: .omitted))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
+                        if index < entries.count - 1 { Divider() }
+                    }
+                    Spacer()
+                }
+            }
+            .padding(20)
+            .navigationTitle("排行榜")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

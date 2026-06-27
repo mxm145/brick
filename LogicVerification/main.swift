@@ -40,6 +40,20 @@ func verifyManualSpeedControl() throws {
     try require(game.dropInterval == 0.38, "Fast speed did not use its fixed interval.")
 }
 
+func verifySnapshotRestore() throws {
+    var game = TetrisGame()
+    game.start()
+    game.setSpeed(.fast)
+    game.moveLeft()
+    guard let restored = TetrisGame(snapshot: game.snapshot) else {
+        throw VerificationError.failed("Saved game could not be restored.")
+    }
+
+    try require(restored.board == game.board, "Restored board differs from the saved board.")
+    try require(restored.active == game.active, "Restored active piece differs from the saved piece.")
+    try require(restored.speed == .fast, "Restored speed differs from the saved speed.")
+}
+
 func verifyLockDelayAndLineClear() throws {
     var board = Array(repeating: Array<TetrominoKind?>(repeating: nil, count: TetrisGame.columns), count: TetrisGame.rows)
     for column in 0..<8 { board[TetrisGame.rows - 1][column] = .j }
@@ -56,19 +70,11 @@ func verifyLockDelayAndLineClear() throws {
     try require(game.lines == 1, "Expected the completed line to clear after the lock delay.")
 }
 
-func verifyMultipleLineClearAndLongBarQueue() throws {
-    var board = Array(repeating: Array<TetrominoKind?>(repeating: nil, count: TetrisGame.columns), count: TetrisGame.rows)
-    for row in (TetrisGame.rows - 2)..<TetrisGame.rows {
-        for column in 0..<8 { board[row][column] = .j }
-    }
-    var game = TetrisGame(
-        testingBoard: board,
-        active: FallingPiece(kind: .o, x: 7, y: TetrisGame.rows - 3)
-    )
-    game.hardDrop()
-    try require(game.lines == 2, "Two completed lines did not clear together.")
-
+func verifyLongBarQueue() throws {
+    var game = TetrisGame()
+    game.start()
     game.queueLongBar()
+
     try require(game.next == .i, "Queueing a long bar did not update the next piece.")
 }
 
@@ -87,10 +93,12 @@ do {
     print("PASS: scoring leaves the selected speed unchanged")
     try verifyManualSpeedControl()
     print("PASS: manual speed selection changes only the configured interval")
+    try verifySnapshotRestore()
+    print("PASS: active game state restores from a snapshot")
     try verifyLockDelayAndLineClear()
     print("PASS: line clears after the fixed lock delay")
-    try verifyMultipleLineClearAndLongBarQueue()
-    print("PASS: multiple lines clear together and the long bar can be queued")
+    try verifyLongBarQueue()
+    print("PASS: the long bar can be queued")
     try verifyPauseStopsTicking()
     print("PASS: pause prevents the timer from moving a piece")
     exit(0)

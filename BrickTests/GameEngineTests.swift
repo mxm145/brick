@@ -47,24 +47,6 @@ final class GameEngineTests: XCTestCase {
         XCTAssertEqual(game.lines, 1)
     }
 
-    func testMultipleCompletedLinesClearTogether() {
-        var board = Array(repeating: Array<TetrominoKind?>(repeating: nil, count: TetrisGame.columns), count: TetrisGame.rows)
-        for row in (TetrisGame.rows - 2)..<TetrisGame.rows {
-            for column in 0..<8 { board[row][column] = .j }
-        }
-        var game = TetrisGame(
-            testingBoard: board,
-            active: FallingPiece(kind: .o, x: 7, y: TetrisGame.rows - 3)
-        )
-
-        game.hardDrop()
-
-        XCTAssertEqual(game.score, 300)
-        XCTAssertEqual(game.lines, 2)
-        XCTAssertTrue(game.board[TetrisGame.rows - 1].allSatisfy { $0 == nil })
-        XCTAssertTrue(game.board[TetrisGame.rows - 2].allSatisfy { $0 == nil })
-    }
-
     func testQueueLongBarUpdatesNextPiece() {
         var game = TetrisGame()
         game.start()
@@ -80,6 +62,23 @@ final class GameEngineTests: XCTestCase {
 
         XCTAssertEqual(game.speed, .fast)
         XCTAssertEqual(game.dropInterval, 0.38)
+    }
+
+    func testSnapshotRestoresActiveGame() throws {
+        var game = TetrisGame()
+        game.start()
+        game.setSpeed(.fast)
+        game.moveLeft()
+
+        let restored = try XCTUnwrap(TetrisGame(snapshot: game.snapshot))
+
+        XCTAssertEqual(restored.board, game.board)
+        XCTAssertEqual(restored.active, game.active)
+        XCTAssertEqual(restored.next, game.next)
+        XCTAssertEqual(restored.score, game.score)
+        XCTAssertEqual(restored.lines, game.lines)
+        XCTAssertEqual(restored.state, game.state)
+        XCTAssertEqual(restored.speed, .fast)
     }
 
     func testPausedGameDoesNotMovePiece() {

@@ -11,6 +11,7 @@
 		5FB5CAD802B311FFB67B9A67 /* GameEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A30A814A054D2BDE6E22878 /* GameEngine.swift */; };
 		779D68E5F49C06AF5787D1B7 /* GameEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB28D80CDA1518161ACD89D1 /* GameEngineTests.swift */; };
 		94DD64FC69B7E318E67EF956 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F33C8C5ACC0B1F44364963 /* ContentView.swift */; };
+		F24B65D2D6EEA6EE7C416EAC /* GamePersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58AC79F67B07993C8B0EDE1 /* GamePersistence.swift */; };
 		F4DEFA130B77A6A10E13FAB1 /* BrickApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02BF1B84BAC3F27089CFC2A0 /* BrickApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -30,6 +31,7 @@
 		96F33C8C5ACC0B1F44364963 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		9A30A814A054D2BDE6E22878 /* GameEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameEngine.swift; sourceTree = "<group>"; };
 		B41B092FA54E265C0FCC0BF1 /* Brick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Brick.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B58AC79F67B07993C8B0EDE1 /* GamePersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePersistence.swift; sourceTree = "<group>"; };
 		B79C791D84678FEB18D0B48A /* BrickTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BrickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CB28D80CDA1518161ACD89D1 /* GameEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameEngineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -57,6 +59,7 @@
 			isa = PBXGroup;
 			children = (
 				9A30A814A054D2BDE6E22878 /* GameEngine.swift */,
+				B58AC79F67B07993C8B0EDE1 /* GamePersistence.swift */,
 			);
 			path = Game;
 			sourceTree = "<group>";
@@ -174,6 +177,7 @@
 				F4DEFA130B77A6A10E13FAB1 /* BrickApp.swift in Sources */,
 				94DD64FC69B7E318E67EF956 /* ContentView.swift in Sources */,
 				5FB5CAD802B311FFB67B9A67 /* GameEngine.swift in Sources */,
+				F24B65D2D6EEA6EE7C416EAC /* GamePersistence.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

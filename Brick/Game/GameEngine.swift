@@ -1,6 +1,6 @@
 import Foundation
 
-public enum DropSpeed: String, CaseIterable, Identifiable, Equatable {
+public enum DropSpeed: String, CaseIterable, Identifiable, Equatable, Codable {
     case slow = "Slow"
     case normal = "Normal"
     case fast = "Fast"
@@ -16,11 +16,11 @@ public enum DropSpeed: String, CaseIterable, Identifiable, Equatable {
     }
 }
 
-public enum GameState: Equatable {
+public enum GameState: Equatable, Codable {
     case ready, running, paused, over
 }
 
-public enum TetrominoKind: CaseIterable, Equatable {
+public enum TetrominoKind: CaseIterable, Equatable, Codable {
     case i, o, t, s, z, j, l
 
     public var colorName: String {
@@ -56,7 +56,7 @@ public enum TetrominoKind: CaseIterable, Equatable {
     }
 }
 
-public struct FallingPiece {
+public struct FallingPiece: Codable, Equatable {
     public let kind: TetrominoKind
     public var x: Int
     public var y: Int
@@ -70,9 +70,22 @@ public struct FallingPiece {
     }
 }
 
+public struct TetrisGameSnapshot: Codable {
+    let board: [[TetrominoKind?]]
+    let active: FallingPiece?
+    let next: TetrominoKind
+    let score: Int
+    let lines: Int
+    let state: GameState
+    let speed: DropSpeed
+    let dropElapsed: TimeInterval?
+    let lockElapsed: TimeInterval?
+    let isGrounded: Bool?
+}
+
 public struct TetrisGame {
     public static let columns = 10
-    public static let rows = 16
+    public static let rows = 18
     public static let lockDelay: TimeInterval = 0.35
 
     public private(set) var board = Array(repeating: Array<TetrominoKind?>(repeating: nil, count: columns), count: rows)
@@ -98,6 +111,21 @@ public struct TetrisGame {
     }
 
     public init() {}
+
+    public init?(snapshot: TetrisGameSnapshot) {
+        guard snapshot.board.count == Self.rows,
+              snapshot.board.allSatisfy({ $0.count == Self.columns }) else { return nil }
+        board = snapshot.board
+        active = snapshot.active
+        next = snapshot.next
+        score = snapshot.score
+        lines = snapshot.lines
+        state = snapshot.state
+        speed = snapshot.speed
+        dropElapsed = snapshot.dropElapsed ?? 0
+        lockElapsed = snapshot.lockElapsed ?? 0
+        isGrounded = snapshot.isGrounded ?? false
+    }
 
     public init(testingBoard: [[TetrominoKind?]], active: FallingPiece, next: TetrominoKind = .t, speed: DropSpeed = .normal) {
         board = testingBoard
@@ -194,6 +222,21 @@ public struct TetrisGame {
 
     public mutating func queueLongBar() {
         next = .i
+    }
+
+    public var snapshot: TetrisGameSnapshot {
+        TetrisGameSnapshot(
+            board: board,
+            active: active,
+            next: next,
+            score: score,
+            lines: lines,
+            state: state,
+            speed: speed,
+            dropElapsed: dropElapsed,
+            lockElapsed: lockElapsed,
+            isGrounded: isGrounded
+        )
     }
 
     private mutating func move(dx: Int, dy: Int) -> Bool {
